@@ -1,8 +1,6 @@
-  
-
-
-
 //#include <EEPROM.h>     // We are going to read and write PICC's UIDs from/to EEPROM
+#include "Thread.h"
+#include "ThreadController.h"
 #include <SPI.h>        // RC522 Module uses SPI protocol
 #include <MFRC522.h>  // Library for Mifare RC522 Devices
 
@@ -10,90 +8,108 @@
 #define ledAmar 6
 #define ledVerm 4
 #define botao 5
-
 #define SS_PIN 10
 #define RST_PIN 9
 MFRC522 rfid(SS_PIN, RST_PIN);   // Create MFRC522 instance.
 
 int leds[] = {ledVerd,ledAmar,ledVerm};
+int led;
+int ledAnt;
 int sizearr = sizeof(leds)/sizeof(int);
-String data[10];
 int c = 0;
-bool enableRfid = false;
-int previousMillis[10];
+long previousMillis = 0;
+String data[10];
 
-
+ThreadController cpu;
+Thread piscaLeds;
+Thread executeRFID;
 
 void setup() {
-  for(int i=0; i<sizeof(previousMillis)/sizeof(int);i++){
-    previousMillis[i] = 0;
-  }
+  
+  pinMode(botao, INPUT_PULLUP);
   for(int i=0; i<sizearr; i++){
     pinMode(leds[i], OUTPUT);
     digitalWrite(leds[i], LOW); 
   }
-    pinMode(botao, INPUT_PULLUP);
-  
-  //Protocol Configuration
+  // # Inicialize Threads
+   
+  // # Protocol Configuration
   Serial.begin(9600);  // Initialize serial communications with PC
   SPI.begin();           // MFRC522 Hardware uses SPI protocol
   rfid.PCD_Init();    // Initialize MFRC522 Hardware
 
-  
+  // # Final setup
   Serial.println("Aproxime o seu cartao do leitor...");
   Serial.println();
 }
 
 void loop() {
-  //Serial.println(sizeof(leds)/sizeof(int));
-
-  blinkLeds(ledVerd,500);
-
-
-  if(!digitalRead(botao)) enableRfid = !enableRfid;
-  Serial.println(enableRfid);
-  while(enableRfid){
-    digitalWrite(ledVerd, LOW); 
-    /*
-    for(int i=0; i<sizearr; i++){
-    if(digitalRead(leds[i])) digitalWrite(leds[i], LOW);                     
-    }*/
-    
-    blinkLeds(ledAmar,300);
-    
-    for(int i=0 ; i<sizeof(data);i++){
-      if(data[i] == leitura()) break;
-      else{
-        data[c] = leitura();
-        c++;
+  
+	threadLed(ledVerd,500);
+  Serial.println(threadLed.tid());
+  //Serial.print("estado botao: ");
+  //Serial.println(digitalRead(botao)==true ? "true" : "false");
+  
+  if(verificaBotao()){
+    threadLed(ledAmar,300);
+    //Serial.println("entrei");
+    while(true){
+      
+      //Serial.println("loop");
+      for(int i=0 ; i<sizeof(data);i++){
+        if(data[i] == leitura()) break;
+        else{
+          data[c] = leitura();
+          c++;
+        }
+      }
+      if(verificaBotao()) {
+        //Serial.println(verificaBotao());
+        break;
       }
     }
-      
-    if(!digitalRead(botao)==HIGH && wait(100)==true) {
-      Serial.println(digitalRead(enableRfid));
-      enableRfid = !enableRfid;
-      digitalWrite(ledAmar, LOW); 
-      break;
-    }
   }
+}
+
+void threadRfid(){
+
+
   
 }
 
-boolean wait(long interval){
-  if (millis() - previousMillis[0] > interval) {
-    previousMillis[0] = millis(); 
+boolean verificaBotao(){ 
+  
+  int interval = 200;
+  if(!digitalRead(botao) && (millis() - previousMillis > interval) ){
+    previousMillis = millis(); 
+    //Serial.println("verificando botao... TRUE!");
     return true;
   }
-  else return false;
+  else{
+    //Serial.println("verificando botao... FALSE!");
+    return false;
+  }
 }
 
-void blinkLeds(int led, long interval){
-  
-  if (millis() - previousMillis[1] > interval) {
-    previousMillis[1] = millis(); 
-    digitalWrite(led, !digitalRead(led));
-  }
-  return;
+void threadLed(int led_desire,long interval){
+	  ledAnt = led;
+	  led = led_desire;
+    if(led != ledAnt){
+      digitalWrite(ledAnt, LOW);
+      piscaLeds.setInterval(interval);
+      piscaLeds.onRun(blinkLed);
+    }
+    //Serial.print("LedAtual: ");
+    //Serial.println(led);
+    //Serial.print("LedAnterior: ");
+    //Serial.println(ledAnt);
+   
+    if(piscaLeds.shouldRun()) piscaLeds.run();
+}
+
+void blinkLed(){
+  //if(led != ledAnt) digitalWrite(ledAnt, LOW);
+	digitalWrite(led, !digitalRead(led));
 }
 
 
